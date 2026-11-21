@@ -1,0 +1,28 @@
+{
+  "name": "robo-whatsapp-24h",
+  "version": "1.0.0",
+  "description": "Robô de prospecção e atendimento 24h no WhatsApp com a API oficial da Meta e a IA que você escolher.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "test": "node --test --test-concurrency=1 test/*.test.mjs",
+    "checar": "node scripts/checar.mjs",
+    "simular": "node scripts/simular.mjs",
+    "iniciar": "node src/plataformas/node.js",
+    "publicar:cloudflare": "node scripts/cloudflare.mjs",
+    "importar": "node scripts/importar.mjs",
+    "teste": "node scripts/teste.mjs",
+    "meta": "node scripts/meta.mjs",
+    "registrar-numero": "node scripts/meta.mjs registrar",
+    "assinar-webhook": "node scripts/meta.mjs assinar",
+    "criar-modelo": "node scripts/meta.mjs criar-modelo",
+    "modelos": "node scripts/meta.mjs modelos",
+    "test:tudo": "npm test && node test/checar-falso.mjs && node test/cloudflare-local.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "4.165.0"
+  }
+}

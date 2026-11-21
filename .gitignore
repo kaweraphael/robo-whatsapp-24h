@@ -1,0 +1,9 @@
+node_modules/
+.env
+.dev.vars
+wrangler.jsonc
+.wrangler/
+dados/
+*.db
+*.db-*
+listas/

@@ -1,0 +1,10 @@
+// Gerado pelo `npm run publicar:cloudflare`. Não precisa editar na mão.
+{
+  "name": "__NOME__",
+  "main": "src/plataformas/cloudflare.js",
+  "compatibility_date": "2026-10-01",
+  "rules": [{ "type": "Text", "globs": ["**/*.md"], "fallthrough": true }],
+  "triggers": { "crons": ["* * * * *"] },
+  "d1_databases": [{ "binding": "DB", "database_name": "__NOME__", "database_id": "__D1_ID__" }],
+  "observability": { "enabled": true }
+}

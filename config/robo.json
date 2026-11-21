@@ -1,0 +1,36 @@
+{
+  "negocio": "Studio Exemplo",
+  "fuso": "America/Sao_Paulo",
+  "ddi_padrao": "55",
+
+  "ia": {
+    "provedor": "gemini",
+    "modelo": "gemini-flash-lite-latest",
+    "max_tokens": 2048,
+    "temperatura": 0.6
+  },
+
+  "meta": { "versao": "v25.0" },
+
+  "atendimento": {
+    "ligado": true,
+    "responder_desconhecidos": true,
+    "espera_segundos": 15,
+    "historico_max": 30,
+    "marcar_como_lida": true,
+    "audio": true
+  },
+
+  "prospeccao": {
+    "ligada": false,
+    "modelo": "",
+    "idioma": "pt_BR",
+    "nomeados": false,
+    "parametros": [],
+    "texto_para_ia": "",
+    "limite_dia": 30,
+    "dias": [1, 2, 3, 4, 5],
+    "hora_inicio": 9,
+    "hora_fim": 18
+  }
+}

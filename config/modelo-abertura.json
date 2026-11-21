@@ -1,0 +1,8 @@
+{
+  "name": "abertura_robo",
+  "language": "pt_BR",
+  "category": "MARKETING",
+  "body": "Olá, {{1}}! Aqui é a Bia, do Studio Exemplo. Estamos com horários de avaliação gratuita de sobrancelha esta semana. Quer que eu te conte como funciona?",
+  "exemplos": ["Maria"],
+  "botoes": ["Quero saber", "Não tenho interesse"]
+}
