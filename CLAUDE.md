@@ -200,7 +200,7 @@ Explique em 4 linhas:
 
 ## Para quem for mexer no código
 
-- `npm test`: 29 testes (unidade + o robô inteiro contra uma Meta e uma IA
+- `npm test`: 33 testes (unidade + o robô inteiro contra uma Meta e uma IA
   falsas). `node test/cloudflare-local.mjs` roda o mesmo fluxo no Worker de
   verdade, local. Rode os dois antes de qualquer mudança no `src/`.
 - A lógica fica em `src/core/` e é a mesma nas duas hospedagens.

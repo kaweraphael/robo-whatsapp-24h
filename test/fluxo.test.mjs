@@ -184,6 +184,42 @@ test('número sem WhatsApp vira "sem_whatsapp" e o robô segue', async () => {
   assert.equal((await contato('551188880002')).estado, 'sem_whatsapp');
 });
 
+test('prospecção: dois relógios ao mesmo tempo mandam só uma abertura', async () => {
+  const { prospectar } = await import('../src/core/robo.js');
+  await db().run("UPDATE contatos SET estado = 'pausado' WHERE estado = 'fila'");
+  await fetch(`${base}/painel/api/importar`, { method: 'POST', headers: { ...auth, 'content-type': 'application/json' }, body: JSON.stringify({ linhas: [{ telefone: '11966660001', nome: 'Rui' }] }) });
+  falso.enviados.length = 0;
+  await Promise.all([prospectar(robo.ctx), prospectar(robo.ctx), prospectar(robo.ctx)]);
+  assert.equal(falso.enviados.filter((e) => e.type === 'template' && e.to === '5511966660001').length, 1);
+});
+
+test('prospecção: Meta fora do ar não trava a conta nem perde o contato', async () => {
+  const { prospectar, lerAjuste } = await import('../src/core/robo.js');
+  await db().run("UPDATE contatos SET estado = 'pausado' WHERE estado = 'fila'");
+  await fetch(`${base}/painel/api/importar`, { method: 'POST', headers: { ...auth, 'content-type': 'application/json' }, body: JSON.stringify({ linhas: [{ telefone: '11900000500' }] }) });
+  assert.match(await prospectar(robo.ctx), /erro/);
+  assert.equal(await lerAjuste(robo.ctx, 'travado'), null, 'queda da Meta não é token inválido');
+  const c = await contato('551100000500');
+  assert.equal(c.estado, 'fila'); assert.equal(c.tentativas, 1);
+  assert.match(await prospectar(robo.ctx), /lista vazia/, 'espera uns minutos antes de tentar de novo');
+  // depois de 3 tentativas desiste
+  for (let i = 0; i < 2; i++) { await db().run("UPDATE contatos SET processando_ate = NULL WHERE id = '551100000500'"); await prospectar(robo.ctx); }
+  assert.equal((await contato('551100000500')).estado, 'erro');
+});
+
+test('mensagem que chegou em outro número da mesma conta é ignorada', async () => {
+  falso.enviados.length = 0;
+  await webhook(webhookMensagem({ de: '5511955550001', texto: 'oi', numeroId: 'OUTRO' }));
+  assert.equal(await contato('551155550001'), null);
+  await esperar(150);
+  assert.equal(falso.enviados.length, 0);
+});
+
+test('quem estava "sem WhatsApp" e manda mensagem volta pra conversa', async () => {
+  await webhook(webhookMensagem({ de: '551100000026', texto: 'oi, vi que me chamaram' }));
+  assert.ok(await ate(async () => (await contato('551100000026')).estado === 'conversa'));
+});
+
 test('painel: pede senha, bloqueia outro site, você responde e devolve pro robô', async () => {
   assert.equal((await fetch(`${base}/painel`)).status, 401);
   const r = await fetch(`${base}/painel`, { headers: auth });

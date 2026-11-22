@@ -66,7 +66,8 @@ export function criarWhatsApp({ token, versao = VERSAO_PADRAO, base = 'https://g
     const j = await r.json().catch(() => ({}));
     if (!r.ok || j.error) {
       const e = j.error || {};
-      throw new ErroMeta(e.message || `Meta respondeu ${r.status}`, e.code ?? 0, e.error_data?.details, r.status);
+      // sem corpo de erro (Meta fora do ar, 5xx): código nulo, pra não confundir com token inválido e travar à toa
+      throw new ErroMeta(e.message || `Meta respondeu ${r.status}`, e.code ?? (r.status === 401 ? 190 : null), e.error_data?.details, r.status);
     }
     return j;
   }

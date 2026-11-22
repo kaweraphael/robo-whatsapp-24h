@@ -24,6 +24,7 @@ export async function servidorFalso(cenario = {}) {
     let m = url.pathname.match(/^\/v\d+\.\d+\/(\w+)\/messages$/);
     if (m && req.method === 'POST') {
       if (corpo.status === 'read') return responder(200, { success: true });
+      if (corpo.to === '5511900000500') { res.writeHead(502); return res.end('Bad Gateway'); }
       if (corpo.to === '5511900000026') return responder(400, { error: { message: 'not a WhatsApp user', code: 131026 } });
       if (corpo.template?.name === 'quebrado') return responder(404, { error: { message: 'template does not exist', code: 132001 } });
       enviados.push({ numeroId: m[1], ...corpo, auth: req.headers.authorization });
@@ -53,14 +54,14 @@ export async function servidorFalso(cenario = {}) {
 }
 
 // Corpo de webhook igual ao que a Meta manda.
-export function webhookMensagem({ de = '5543999998888', texto = 'oi', id = `wamid.in${Math.random()}`, tipo = 'text', audio, nome = 'Cliente', quando = Date.now() } = {}) {
+export function webhookMensagem({ de = '5543999998888', texto = 'oi', id = `wamid.in${Math.random()}`, tipo = 'text', audio, nome = 'Cliente', quando = Date.now(), numeroId = 'NUM1' } = {}) {
   const msg = { from: de, id, timestamp: String(Math.floor(quando / 1000)), type: tipo };
   if (tipo === 'text') msg.text = { body: texto };
   if (tipo === 'audio') msg.audio = { id: audio || 'midia123', mime_type: 'audio/ogg; codecs=opus' };
   return {
     object: 'whatsapp_business_account',
     entry: [{ id: 'WABA', changes: [{ field: 'messages', value: {
-      messaging_product: 'whatsapp', metadata: { display_phone_number: '5511000000000', phone_number_id: 'NUM1' },
+      messaging_product: 'whatsapp', metadata: { display_phone_number: '5511000000000', phone_number_id: numeroId },
       contacts: [{ profile: { name: nome }, wa_id: de }], messages: [msg],
     } }] }],
   };

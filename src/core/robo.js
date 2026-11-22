@@ -14,6 +14,7 @@ import { explicarErro } from './whatsapp.js';
 const H24 = 24 * 3600e3;
 const MARGEM_JANELA = 30 * 60e3; // não arrisca mandar texto livre nos últimos 30 min da janela de 24h
 const TRAVA_MS = 3 * 60e3;
+const TEMPORARIOS = new Set([null, 131000, 131056]); // sem código = rede ou Meta fora do ar
 
 export async function evento(ctx, tipo, texto) {
   try { await ctx.db.run('INSERT INTO eventos (quando, tipo, texto) VALUES (?, ?, ?)', ctx.agora(), tipo, String(texto ?? '').slice(0, 2000)); } catch {}
@@ -35,7 +36,11 @@ export async function receber(ctx, corpo, lido) {
   const { config } = ctx;
   const paraResponder = new Set();
 
+  // a mesma conta pode ter outros números: só trata o que chegou no número do robô
+  const meu = (n) => !n || !ctx.env.META_PHONE_NUMBER_ID || String(n) === String(ctx.env.META_PHONE_NUMBER_ID);
+
   for (const m of msgs) {
+    if (!meu(m.numeroId)) continue;
     const id = chave(m.de, config.ddi_padrao);
     let c = await ctx.db.first('SELECT * FROM contatos WHERE id = ?', id);
     if (!c) {
@@ -54,7 +59,7 @@ export async function receber(ctx, corpo, lido) {
     );
     if (!nova) continue; // a Meta reenviou a mesma mensagem
 
-    const estado = c.estado === 'enviado' || c.estado === 'fila' || c.estado === 'erro' ? 'conversa' : c.estado;
+    const estado = ['enviado', 'fila', 'erro', 'sem_whatsapp'].includes(c.estado) ? 'conversa' : c.estado;
     await ctx.db.run(
       'UPDATE contatos SET wa = ?, nome = coalesce(nome, ?), ultima_in = ?, estado = ?, atualizado_em = ? WHERE id = ?',
       m.de, m.nomePerfil, m.quando, estado, ctx.agora(), id,
@@ -66,7 +71,8 @@ export async function receber(ctx, corpo, lido) {
     if (config.atendimento.palavras_parar.includes(limpo) && estado !== 'nao_contatar') {
       await ctx.db.run("UPDATE contatos SET estado = 'nao_contatar', atualizado_em = ? WHERE id = ?", ctx.agora(), id);
       await ctx.db.run("UPDATE mensagens SET processada = 1 WHERE contato = ? AND processada = 0", id);
-      await enviarTextoRegistrado(ctx, { ...c, wa: m.de }, config.atendimento.resposta_parar, 'robo');
+      try { await enviarTextoRegistrado(ctx, { ...c, wa: m.de }, config.atendimento.resposta_parar, 'robo'); }
+      catch (e) { await evento(ctx, 'erro_resposta', `confirmação do parar: ${e.message}`); }
       await evento(ctx, 'parar', `final ${id.slice(-4)} pediu pra parar`);
       continue;
     }
@@ -78,7 +84,7 @@ export async function receber(ctx, corpo, lido) {
   }
 
   for (const s of status) {
-    if (s.status !== 'failed') continue;
+    if (s.status !== 'failed' || !meu(s.numeroId)) continue;
     const id = chave(s.para, config.ddi_padrao);
     const codigo = s.erro?.code;
     const exp = explicarErro(codigo);
@@ -310,7 +316,8 @@ export function metaAteAgora(config, ms) {
   const p = partes(ms, config.fuso);
   const min = p.hora * 60 + p.minuto;
   const ini = pr.hora_inicio * 60;
-  const fim = Math.max(ini + 60, pr.hora_fim * 60 - 60); // último envio 1h antes do fim, pra dar tempo de atender
+  // último envio 1h antes do fim, pra dar tempo de atender (hora_fim 24 = o dia todo, sem essa folga)
+  const fim = pr.hora_fim >= 24 ? 24 * 60 : Math.max(ini + 60, pr.hora_fim * 60 - 60);
   if (!pr.dias.includes(p.semana) || min < ini || min >= fim) return 0;
   return Math.min(pr.limite_dia, Math.ceil((pr.limite_dia * (min - ini + 1)) / (fim - ini)));
 }
@@ -326,22 +333,29 @@ export async function prospectar(ctx) {
   const feitos = (await ctx.db.first("SELECT count(*) AS n FROM contatos WHERE enviado_em >= ? AND origem = 'lista'", inicioDoDia(ms, config.fuso))).n;
   if (feitos >= alvo) return `em dia (${feitos}/${config.prospeccao.limite_dia})`;
 
-  const c = await ctx.db.first("SELECT * FROM contatos WHERE estado = 'fila' ORDER BY criado_em, id LIMIT 1");
+  // pega o próximo da fila com trava: dois relógios rodando juntos nunca mandam pro mesmo contato
+  const c = await ctx.db.first("SELECT * FROM contatos WHERE estado = 'fila' AND (processando_ate IS NULL OR processando_ate < ?) ORDER BY criado_em, id LIMIT 1", ms);
   if (!c) return 'lista vazia';
+  const pegou = await ctx.db.run("UPDATE contatos SET processando_ate = ? WHERE id = ? AND estado = 'fila' AND (processando_ate IS NULL OR processando_ate < ?)", ms + TRAVA_MS, c.id, ms);
+  if (!pegou) return 'outro relógio pegou esse contato';
   try {
     await iniciarConversa(ctx, c);
+    await ctx.db.run('UPDATE contatos SET processando_ate = NULL, tentativas = 0 WHERE id = ?', c.id);
     return `enviado (final ${c.id.slice(-4)})`;
   } catch (e) {
     const exp = explicarErro(e.codigo);
-    await ctx.db.run("UPDATE contatos SET estado = ?, erro = ?, atualizado_em = ? WHERE id = ?",
-      e.codigo === 131026 ? 'sem_whatsapp' : 'erro', `${e.codigo ?? ''} ${e.message}: ${exp.texto}`.slice(0, 400), ms, c.id);
+    const msg = `${e.codigo ?? ''} ${e.message}: ${exp.texto}`.slice(0, 400);
     await evento(ctx, 'erro_envio', `final ${c.id.slice(-4)}: ${e.codigo ?? ''} ${e.message}`);
-    if (exp.acao === 'travar' || !e.codigo) {
-      if (exp.acao === 'travar') {
-        // problema da conta, não do contato: devolve ele pra fila
-        await ctx.db.run("UPDATE contatos SET estado = 'fila' WHERE id = ?", c.id);
-        await travar(ctx, `${e.codigo}: ${exp.texto}`);
-      }
+    if (exp.acao === 'travar') {
+      // problema da conta, não do contato: devolve ele pra fila e para tudo
+      await ctx.db.run("UPDATE contatos SET estado = 'fila', processando_ate = NULL, erro = ?, atualizado_em = ? WHERE id = ?", msg, ms, c.id);
+      await travar(ctx, `${e.codigo}: ${exp.texto}`);
+    } else if (TEMPORARIOS.has(e.codigo ?? null) && (c.tentativas || 0) < 2) {
+      // falha passageira (rede, Meta instável): tenta de novo nas próximas rodadas
+      await ctx.db.run("UPDATE contatos SET processando_ate = ?, tentativas = tentativas + 1, erro = ?, atualizado_em = ? WHERE id = ?", ms + 5 * 60e3, msg, ms, c.id);
+    } else {
+      await ctx.db.run("UPDATE contatos SET estado = ?, processando_ate = NULL, tentativas = 0, erro = ?, atualizado_em = ? WHERE id = ?",
+        e.codigo === 131026 ? 'sem_whatsapp' : 'erro', msg, ms, c.id);
     }
     return `erro: ${e.codigo ?? ''} ${e.message}`;
   }
